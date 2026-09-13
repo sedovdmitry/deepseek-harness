@@ -84,6 +84,20 @@ class ToolLayer implements ScopeLayer {
     return true
   }
 
+  /**
+   * Whether any compiled restriction in this layer explicitly denies a name.
+   * Applied to the scope's OWN registrations too: an explicit deny is a
+   * deliberate removal and must reach scope-local tools (e.g. the scoped
+   * delegation runtime a joined preset registers into a child), while an
+   * `allow` keeps exempting them so least-privilege lists cannot strip the
+   * runtime's own reporting/structured-output registrations.
+   */
+  denies(name: string): boolean {
+    for (const filter of this.restrictions.values()) {
+      if (filter.deny !== undefined && filter.deny.has(name)) return true
+    }
+    return false
+  }
 }
 
 interface Registration {
@@ -153,9 +167,10 @@ export class ToolsService extends Service {
   }
 
   /**
-   * Restrict global tools for the calling agent scope. Empty filters, unknown
-   * names, scope-local names, and reserved transport names fail. Restrictions
-   * intersect; scoped registrations remain visible.
+   * Restrict the tools the calling agent scope resolves. Empty filters,
+   * unknown names, and reserved transport names fail. Restrictions intersect;
+   * an explicit `deny` reaches the scope's own registrations, while an
+   * `allow` keeps exempting them.
    * @param filter - global-tool mask: `allow` (keep only) and/or `deny` (remove).
    * @returns the exact disposer that lifts this restriction.
    */
@@ -179,7 +194,7 @@ export class ToolsService extends Service {
     const known = this.view(scope).restrictableNames
     const unknown = [...allow ?? [], ...deny ?? []].filter(name => !known.has(name))
     if (unknown.length > 0) {
-      throw new Error(`tools.restrict() names unknown global tool${unknown.length > 1 ? 's' : ''} ${unknown.map(n => `"${n}"`).join(', ')}; known global tools: ${[...known].sort().join(', ') || '(none)'}`)
+      throw new Error(`tools.restrict() names unknown tool${unknown.length > 1 ? 's' : ''} ${unknown.map(n => `"${n}"`).join(', ')}; known tools: ${[...known].sort().join(', ') || '(none)'}`)
     }
     return this.layers.effect(
       this.ctx,
@@ -219,8 +234,15 @@ export class ToolsService extends Service {
     if (own !== undefined) {
       for (const [name, registration] of own.tools.entries()) {
         knownNames.add(name)
-        visible.set(name, registration.definition)
-        registrations.set(name, registration)
+        restrictableNames.add(name)
+        // An explicit deny reaches the scope's own registrations — a joined
+        // preset's scoped tools are exactly what a child must be able to deny.
+        // `allow` keeps exempting them: least-privilege lists must not strip
+        // the delegation runtime's own reporting/structured-output tools.
+        if (layers.every(layer => !layer.denies(name))) {
+          visible.set(name, registration.definition)
+          registrations.set(name, registration)
+        }
       }
     }
     return { visible, registrations, knownNames, restrictableNames }

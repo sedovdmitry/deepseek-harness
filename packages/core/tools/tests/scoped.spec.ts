@@ -186,21 +186,22 @@ describe('restrict()', () => {
 
   it('fails loud on an unscoped call, an empty filter, and names it does not inherit', async () => {
     const ctx = await mount()
-    const { scope } = await mintAgentScope(ctx, 'a')
+    const { scope, key } = await mintAgentScope(ctx, 'a')
     ctx.tools.register(tool('real'))
     scope.ctx.tools.register(tool('local'))
     expect(() => ctx.tools.restrict({ deny: ['real'] })).toThrow(/requires a scoped context/)
     expect(() => scope.ctx.tools.restrict({})).toThrow(/no-op/)
-    // A scope's own registration is exempt from its own filter, so naming it
-    // is a caller error rather than a silent no-op.
-    expect(() => scope.ctx.tools.restrict({ allow: ['local'] })).toThrow(/unknown global tool "local"/)
-    expect(() => scope.ctx.tools.restrict({ allow: ['reall'] })).toThrow(/unknown global tool "reall".*known global tools: real/s)
-    expect(() => scope.ctx.tools.restrict({ deny: ['ghost', 'wraith'] })).toThrow(/unknown global tools "ghost", "wraith"/)
+    // An explicit deny reaches the scope's own registrations, so naming one
+    // is admissible; an unknown name still fails loud.
+    expect(() => scope.ctx.tools.restrict({ deny: ['local'] })).not.toThrow()
+    expect(ctx.tools.schemas(key).map(t => t.name)).toEqual(['real'])
+    expect(() => scope.ctx.tools.restrict({ allow: ['reall'] })).toThrow(/unknown tool "reall".*known tools: .*real/s)
+    expect(() => scope.ctx.tools.restrict({ deny: ['ghost', 'wraith'] })).toThrow(/unknown tools "ghost", "wraith"/)
 
     const emptyCtx = await mount()
     const { scope: emptyScope } = await mintAgentScope(emptyCtx, 'empty')
     expect(() => emptyScope.ctx.tools.restrict({ deny: ['ghost'] }))
-      .toThrow(/known global tools: \(none\)/)
+      .toThrow(/known tools: \(none\)/)
   })
 })
 
@@ -250,6 +251,19 @@ describe('restrict() over an inherited scope layer', () => {
 
     expect(ctx.tools.schemas(child.key).map(t => t.name).sort()).toEqual(['read', 'report'])
     expect(await run(ctx, 'report', child.key)).toBe('ran:report')
+  })
+
+  it('an explicit deny reaches own scope registrations, allow still exempts them', async () => {
+    const ctx = await mount()
+    const { scope, key } = await mintAgentScope(ctx, 'a')
+    scope.ctx.tools.register(tool('deputy'))
+    scope.ctx.tools.register(tool('report'))
+
+    scope.ctx.tools.restrict({ allow: ['report'], deny: ['deputy'] })
+
+    expect(ctx.tools.schemas(key).map(t => t.name)).toEqual(['report'])
+    expect(await run(ctx, 'deputy', key)).toBe('Error: unknown tool "deputy"')
+    expect(await run(ctx, 'report', key)).toBe('ran:report')
   })
 
   it('lets an ancestor\'s restriction reach every scope nested inside it', async () => {
