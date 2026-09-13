@@ -192,9 +192,20 @@ export class ToolsService extends Service {
       throw new Error(`tools.restrict() cannot name reserved PTC mode presentation transport "${RUN_CODE_NAME}"; restrict end-capability tools instead`)
     }
     const known = this.view(scope).restrictableNames
-    const unknown = [...allow ?? [], ...deny ?? []].filter(name => !known.has(name))
-    if (unknown.length > 0) {
-      throw new Error(`tools.restrict() names unknown tool${unknown.length > 1 ? 's' : ''} ${unknown.map(n => `"${n}"`).join(', ')}; known tools: ${[...known].sort().join(', ') || '(none)'}`)
+    const unknownAllow = [...allow ?? []].filter(name => !known.has(name))
+    if (unknownAllow.length > 0) {
+      throw new Error(`tools.restrict() names unknown tool${unknownAllow.length > 1 ? 's' : ''} ${unknownAllow.map(n => `"${n}"`).join(', ')}; known tools: ${[...known].sort().join(', ') || '(none)'}`)
+    }
+    // Deny stays lenient about names the scope does not resolve YET: a child's
+    // creation window applies its toolFilter before the scoped delegation
+    // runtime registers into the child's own layer, and an explicit deny is the
+    // one way to strip that runtime. The deny layer reaches the scope's OWN
+    // registrations by design, so an unknown deny name still takes effect
+    // against any later own-scope registration of that name — but it cannot
+    // mask a typo silently, hence the warning.
+    const unknownDeny = [...deny ?? []].filter(name => !known.has(name))
+    if (unknownDeny.length > 0) {
+      this.ctx.logger.warn(`tools.restrict() denies unknown tool${unknownDeny.length > 1 ? 's' : ''} ${unknownDeny.map(n => `"${n}"`).join(', ')} — effective only against later own-scope registrations of those names; known tools: ${[...known].sort().join(', ') || '(none)'}`)
     }
     return this.layers.effect(
       this.ctx,

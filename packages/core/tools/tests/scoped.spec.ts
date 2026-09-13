@@ -196,12 +196,15 @@ describe('restrict()', () => {
     expect(() => scope.ctx.tools.restrict({ deny: ['local'] })).not.toThrow()
     expect(ctx.tools.schemas(key).map(t => t.name)).toEqual(['real'])
     expect(() => scope.ctx.tools.restrict({ allow: ['reall'] })).toThrow(/unknown tool "reall".*known tools: .*real/s)
-    expect(() => scope.ctx.tools.restrict({ deny: ['ghost', 'wraith'] })).toThrow(/unknown tools "ghost", "wraith"/)
-
-    const emptyCtx = await mount()
-    const { scope: emptyScope } = await mintAgentScope(emptyCtx, 'empty')
-    expect(() => emptyScope.ctx.tools.restrict({ deny: ['ghost'] }))
-      .toThrow(/known tools: \(none\)/)
+    // Deny stays lenient about names the scope does not resolve YET: a child's
+    // creation window applies its toolFilter before the scoped delegation
+    // runtime registers into its own layer. The unknown deny still takes
+    // effect against later own-scope registrations, and the call warns.
+    expect(() => scope.ctx.tools.restrict({ deny: ['ghost', 'wraith'] })).not.toThrow()
+    scope.ctx.tools.register(tool('ghost'))
+    // 'local' stays stripped by the earlier deny above; 'ghost' is stripped by
+    // the lenient deny that named it before its registration existed.
+    expect(ctx.tools.schemas(key).map(t => t.name)).toEqual(['real'])
   })
 })
 

@@ -376,7 +376,9 @@ describe('startInProcessRun', () => {
     const beforeSessions = ctx.sessions.list().length
     await expect(startInProcessRun({
       ...request(parent),
-      toolFilter: { deny: ['unknown-tool'] },
+      // Unknown DENY names validate leniently; allow must resolve, so an
+      // unknown allow name still fails the unpublished setup loudly.
+      toolFilter: { allow: ['unknown-tool'] },
     }, {})).rejects.toThrow('unknown tool')
     expect(ctx.agents.list()).toHaveLength(beforeAgents)
     expect(ctx.sessions.list()).toHaveLength(beforeSessions)
