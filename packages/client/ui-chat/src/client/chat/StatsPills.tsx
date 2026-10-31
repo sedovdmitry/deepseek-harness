@@ -4,9 +4,11 @@
 // token totals, and click-open dialogs. Settled-node identity prevents
 // stream-delta updates from rerendering the pills.
 
-import { memo, useMemo, type ReactNode } from 'react'
+import { memo, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { IconDatabaseOutlineRegular, IconGaugeOutlineRegular, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { UseResource } from '@deepseek-ai/dsh-client-resources/client'
+import type { RouteCacheEntry } from '../cache-clock-resource.ts'
 import type { UseProjection } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { InjectFace, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: merges the sessionStats key into SessionProjectionMap for useProjection.
@@ -120,6 +122,36 @@ export function billedInputTokens(usage: TokenUsageProjection): number {
 }
 
 type Translate = ChatViewSlotProps['t']
+
+/** Fallback TTL when a snapshot predates per-route TTLs (ms). */
+const CACHE_TTL_MS = 20 * 60_000
+/** Below this remaining time the countdown turns the "expiring" shade. */
+const CACHE_WARN_MS = 10 * 60_000
+
+/**
+ * Re-render ticker for the TTL countdown (absolute timestamps, local clock).
+ * @param intervalMs - tick period.
+ * @returns the current wall-clock time in epoch ms.
+ */
+function useNow(intervalMs: number): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => { setNow(Date.now()) }, intervalMs)
+    return () => { clearInterval(id) }
+  }, [intervalMs])
+  return now
+}
+
+/**
+ * Compact remaining-time text for the countdown.
+ * @param ms - remaining milliseconds (positive).
+ * @returns "42m" under an hour, "1h 05m" from there on.
+ */
+function formatCacheLeft(ms: number): string {
+  const minutes = Math.max(0, Math.round(ms / 60_000))
+  if (minutes < 60) return `${minutes}m`
+  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`
+}
 
 /** Props shared by every composer stats pill: the conversation-snapshot selector plus the projection read seat. */
 export interface StatPillProps extends InjectFace<PerformanceUsageInjected> {
@@ -294,17 +326,40 @@ export const ActivityPill = memo(function ActivityPill({ useChat, useProjection,
 })
 
 /** Whole-log token total and cache hit; Compact keeps only the cache hit. */
-export const UsagePill = memo(function UsagePill({ useProjection, usePerformanceUsage, t }: StatPillProps) {
+export const UsagePill = memo(function UsagePill({ useProjection, usePerformanceUsage, t, useResource }: StatPillProps & {
+  /** Root keyed hook: the host-wide cache-clock snapshot source. */
+  useResource?: UseResource
+}) {
   const mode = usePerformanceUsage(value => value)
   const usage = useProjection('tokenUsage')
+  // Host-wide snapshot: no per-session route identity on the pill, so show the
+  // most recently billed route (the one this session most likely rides).
+  const clock = useResource?.<'cache-clock'>('dsh-resource://cache-clock/host')
+  const entry: RouteCacheEntry | undefined = clock !== undefined && clock.status === 'live'
+    ? [...(clock.value?.routes ?? [])].sort((a, b) => b.at - a.at)[0]
+    : undefined
+  const now = useNow(5_000)
+  const ttlMs = entry?.ttlMs ?? CACHE_TTL_MS
+  const leftMs = entry === undefined ? null : ttlMs - (now - entry.at)
+  const cacheState = leftMs === null || leftMs > CACHE_WARN_MS
+    ? 'fresh'
+    : leftMs > 0 ? 'expiring' : 'cold'
+  const ttlText = entry === undefined || leftMs === null ? null
+    : cacheState === 'cold'
+      ? t('stats.cacheCold')
+      : t('stats.cacheLeft', { time: formatCacheLeft(leftMs) })
   // Gated on actual token activity: a session whose steps all settled without
   // billing (e.g. every request failed) shows no usage pill.
   if (usage === undefined || (billedInputTokens(usage) === 0 && usage.outputTokens === 0)) return null
   const cacheHit = cacheHitPercent(usage)
   const cacheHitText = cacheHit !== null ? t('stats.cacheHit', { percent: cacheHit }) : null
+  const withTtl = (text: string | null): string | null => {
+    if (ttlText === null) return text
+    return text === null ? ttlText : `${text} · ${ttlText}`
+  }
   const icon = <IconDatabaseOutlineRegular />
   if (mode === 'compact') {
-    return cacheHitText === null ? null : <PlainPill stat="usage" icon={icon} {...reading(cacheHitText, null)} />
+    return cacheHitText === null ? null : <PlainPill stat="usage" icon={icon} {...reading(cacheHitText, withTtl(null))} />
   }
   // Same aggregate as the Turn pill's totalTokens: every prompt-side billing bucket plus output.
   const total = billedInputTokens(usage) + usage.outputTokens
@@ -313,7 +368,7 @@ export const UsagePill = memo(function UsagePill({ useProjection, usePerformance
     <DialogPill
       stat="usage"
       icon={icon}
-      {...reading(totalText, cacheHitText)}
+      {...reading(totalText, withTtl(cacheHitText))}
       title={t('stats.dialog.usageTitle')}
       titleValue={exactCount(total, t)}
     >

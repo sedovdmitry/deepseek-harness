@@ -61,3 +61,16 @@ button.pill[aria-expanded='true'] {
   color: var(--dsw-alias-separator-primary);
   margin: 0 6px;
 }
+
+/* Cache-clock countdown shades (fresh → expiring → cold). */
+.cacheFresh {
+  color: var(--dsh-status-ok, #3fb950);
+}
+
+.cacheExpiring {
+  color: var(--dsh-status-warn, #d29922);
+}
+
+.cacheCold {
+  color: var(--dsh-status-danger, #f85149);
+}
