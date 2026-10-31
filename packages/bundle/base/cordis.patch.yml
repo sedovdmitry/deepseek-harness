@@ -348,6 +348,16 @@
 
               When ready, call exit_plan_mode with the complete plan markdown, starting with a # title. Make exit_plan_mode the only and final tool call in that assistant response: it presents the plan for approval, and implementation begins only in a later step after approval. Do not paste the final plan as a plain reply or ask "should I proceed?" through prose or ask_user_question. If review rejects it, incorporate the feedback and present again. If the review channel is unavailable or aborted, stay in plan mode and ask the user to switch modes manually; do not proceed with implementation.
 
+    - id: cache-clock
+      name: '@deepseek-ai/dsh-cache-clock'
+      # Measured defaults (2026-10): z.ai GLM prefixes die ~20-30 min; DeepSeek
+      # official prefixes stayed hot for hours in the same traffic sample.
+      config:
+        defaultTtlMs: 1200000
+        routeTtlMs:
+          'deepseek-official/deepseek-v4-flash': 7200000
+          'deepseek-official/deepseek-v4-pro': 7200000
+          'deepseek-official/deepseek-flash': 7200000
     - id: token-meter
       name: '@deepseek-ai/dsh-token-meter'
 

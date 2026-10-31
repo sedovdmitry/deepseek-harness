@@ -362,6 +362,7 @@
     { "path": "./packages/llm/llm" },
     { "path": "./packages/llm/deepseek-llm-api-extensions" },
     { "path": "./packages/llm/token-meter" },
+    { "path": "./packages/llm/cache-clock" },
     { "path": "./packages/core/session" },
     { "path": "./packages/core/scope" },
     { "path": "./packages/typert/protocol" },
