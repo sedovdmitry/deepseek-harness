@@ -2,6 +2,9 @@ import type {} from '@deepseek-ai/dsh-client-ui-context-menu/client'
 /** Register the Chat Conversation target, renderers, stats, and details surface. */
 import type {} from '@deepseek-ai/dsh-client-ui-file-drag/client'
 import type {} from '@deepseek-ai/dsh-client-product-analytics/client'
+import type {} from '@deepseek-ai/dsh-client-resources/client'
+import type {} from '@deepseek-ai/dsh-cache-clock'
+import { registerCacheClockResource } from './cache-clock-resource.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
@@ -79,6 +82,7 @@ export const CHAT_NODE_INJECT: ChatNodeInjected = {
 export const inject = [
   'slots', 'sessions', 'uiWorkspace', 'uiSession', 'uiConversation', 'locale',
   'configForms', 'connection', 'remote', 'remote.session', 'sidebarRight', 'fileDrag',
+  'resources',
 ]
 
 /**
@@ -137,6 +141,7 @@ export function apply(ctx: Context): void {
   })
 
   ctx.effect(() => ctx.locale.register(NS, { zh, en, ja, es, fr, de, ru, pt }), 'ui-chat: dictionaries')
+  ctx.effect(() => registerCacheClockResource(ctx), 'ui-chat: cache-clock resource provider')
   const t = ctx.locale.bind(NS)
   const chatStore = createChatStore()
   const chatScrollPositions = new Map<SessionId, ChatScrollPosition>()
