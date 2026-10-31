@@ -77,6 +77,8 @@ export class CacheClock extends Service {
     // the full snapshot at most one heartbeat after (re)connecting.
     const heartbeat = setInterval(() => this.publish(), CacheClock.HEARTBEAT_MS)
     ctx.effect(() => () => clearInterval(heartbeat), 'cache-clock: state heartbeat')
+    // `{ global: true }`: the new upstream dispatches session events scoped to
+    // each session's context; a plain root listener never sees them.
     ctx.on('session/event', (session, event) => {
       if (event.type === 'request/header') {
         const config = event.data.header.config
@@ -97,7 +99,7 @@ export class CacheClock extends Service {
         ? { at: event.time }
         : { at: event.time, cacheReadTokens })
       this.publish()
-    })
+    }, { global: true })
   }
 
   /** Resolved TTL for one route: explicit override, else the configured default. */
