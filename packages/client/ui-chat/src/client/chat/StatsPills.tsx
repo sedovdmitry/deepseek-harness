@@ -357,9 +357,21 @@ export const UsagePill = memo(function UsagePill({ useProjection, usePerformance
     if (ttlText === null) return text
     return text === null ? ttlText : `${text} · ${ttlText}`
   }
+  // The countdown is color-shaded: fresh (green) above the warn threshold,
+  // expiring (orange) under it, cold (red) once the TTL is past.
+  const cacheSpan = ttlText === null ? null : (
+    <span
+      className={cacheState === 'fresh' ? css.cacheFresh : cacheState === 'expiring' ? css.cacheExpiring : css.cacheCold}
+      title={entry === undefined ? undefined : `cache clock · ${entry.route}`}
+    >
+      {ttlText}
+    </span>
+  )
+  const withCacheNode = (reading_: { label: ReactNode; text: string }): { label: ReactNode; text: string } =>
+    cacheSpan === null ? reading_ : { ...reading_, label: <>{reading_.label}<span className={css.sep} aria-hidden>·</span>{cacheSpan}</> }
   const icon = <IconDatabaseOutlineRegular />
   if (mode === 'compact') {
-    return cacheHitText === null ? null : <PlainPill stat="usage" icon={icon} {...reading(cacheHitText, withTtl(null))} />
+    return cacheHitText === null ? null : <PlainPill stat="usage" icon={icon} {...withCacheNode(reading(cacheHitText, withTtl(null)))} />
   }
   // Same aggregate as the Turn pill's totalTokens: every prompt-side billing bucket plus output.
   const total = billedInputTokens(usage) + usage.outputTokens
@@ -368,7 +380,7 @@ export const UsagePill = memo(function UsagePill({ useProjection, usePerformance
     <DialogPill
       stat="usage"
       icon={icon}
-      {...reading(totalText, withTtl(cacheHitText))}
+      {...withCacheNode(reading(totalText, withTtl(cacheHitText)))}
       title={t('stats.dialog.usageTitle')}
       titleValue={exactCount(total, t)}
     >
